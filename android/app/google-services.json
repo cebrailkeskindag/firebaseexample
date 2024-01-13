@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "692160740877",
+    "project_id": "flutter-starter-230fe",
+    "storage_bucket": "flutter-starter-230fe.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:692160740877:android:8352c47e6e46ed8aa7df44",
+        "android_client_info": {
+          "package_name": "com.example.firebaseexample"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhMzgKu12yCXXu9ni5WOPKSai39C3WhTE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
