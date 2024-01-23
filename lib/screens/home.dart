@@ -1,12 +1,16 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebaseexample/models/message_model.dart';
+import 'package:firebaseexample/screens/chat_page.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 final firebaseAuthInstance = FirebaseAuth.instance;
 final firebaseStorageInstance = FirebaseStorage.instance;
+final firebaseFireStore = FirebaseFirestore.instance;
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -17,6 +21,28 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   File? _pickedFile;
+  String _imageUrl = '';
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    _getUserImage();
+    super.initState();
+  }
+
+  void _getUserImage() async {
+    final user = firebaseAuthInstance.currentUser;
+    final document = firebaseFireStore.collection("users").doc(user!.uid);
+    final documentSnapshot =
+        await document.get(); // document.get => dökümanın okunmasını sağlar.
+    // documentSnapshot => dökümanın tamamı
+    setState(() {
+      if (documentSnapshot.get("imageUrl") != null) {
+        _imageUrl = documentSnapshot.get("imageUrl");
+      }
+      // documentSnapshot.get => dökümanın içindeki field'ı okur
+    });
+  }
 
   void _pickImage() async {
     final image = await ImagePicker()
@@ -29,6 +55,15 @@ class _HomeState extends State<Home> {
     }
   }
 
+  Future<void> _sendMessage() async {
+    final user = firebaseAuthInstance.currentUser;
+    await firebaseFireStore.collection('messages').add({
+      'userID': user!.uid,
+      'message': _messageController.text,
+      'date': DateTime.now()
+    });
+  }
+
   void _upload() async {
     final user = firebaseAuthInstance.currentUser;
     final storageRef =
@@ -37,7 +72,12 @@ class _HomeState extends State<Home> {
     await storageRef.putFile(_pickedFile!);
 
     final url = await storageRef.getDownloadURL();
-    print(url);
+
+    final document = firebaseFireStore.collection("users").doc(user.uid);
+
+    await document.update({
+      'imageUrl': url
+    }); // document.update => verilen değeri ilgili dökümanda günceller!
   }
 
   @override
@@ -47,31 +87,124 @@ class _HomeState extends State<Home> {
         title: const Text("Firebase Application"),
         actions: [
           IconButton(
-              onPressed: () {
-                firebaseAuthInstance.signOut();
-              },
-              icon: const Icon(Icons.logout))
+            onPressed: () {
+              firebaseAuthInstance.signOut();
+            },
+            icon: const Icon(Icons.logout),
+          )
         ],
       ),
-      body: Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          CircleAvatar(
-            radius: 40,
-            backgroundColor: Colors.grey,
-            foregroundImage:
-                _pickedFile != null ? FileImage(_pickedFile!) : null,
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const SizedBox(height: 15),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_imageUrl.isNotEmpty && _pickedFile == null)
+                          CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.green,
+                            foregroundImage: NetworkImage(_imageUrl),
+                          ),
+                        if (_pickedFile != null)
+                          CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.grey,
+                            foregroundImage: FileImage(_pickedFile!),
+                          ),
+                        TextButton(
+                          onPressed: () {
+                            _pickImage();
+                          },
+                          child: const Text("Resim Seç"),
+                        ),
+                        if (_pickedFile != null)
+                          ElevatedButton(
+                            onPressed: () {
+                              _upload();
+                            },
+                            child: const Text("Yükle"),
+                          ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 450,
+                      child: StreamBuilder(
+                        stream: firebaseFireStore
+                            .collection('messages')
+                            .orderBy('date')
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const CircularProgressIndicator();
+                          }
+                          if (snapshot.hasError) {
+                            return Text('Hata: ${snapshot.error}');
+                          }
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return const Text('Mesaj Yok');
+                          }
+
+                          final messages = snapshot.data!.docs.reversed;
+                          List<Widget> messageWidgets = [];
+                          List<Message> messageList = messages
+                              .map((e) => Message(e['userID'], e['message'],
+                                  e['date'].toString()))
+                              .toList();
+
+                          for (var message in messageList) {
+                            messageWidgets.add(ChatPage(
+                                message: message,
+                                user: firebaseAuthInstance.currentUser!));
+                          }
+
+                          return ListView(
+                            reverse: true,
+                            children: messageWidgets,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          TextButton(
-              onPressed: () {
-                _pickImage();
-              },
-              child: const Text("Resim Seç")),
-          ElevatedButton(
-              onPressed: () {
-                _upload();
-              },
-              child: const Text("Yükle"))
-        ]),
+          Padding(
+            padding: const EdgeInsets.all(3.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _messageController,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      hintText: 'Mesajınızı yazın...',
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send_sharp),
+                  onPressed: () {
+                    _sendMessage();
+                    _messageController.clear();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
