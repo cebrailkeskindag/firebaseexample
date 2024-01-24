@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebaseexample/models/message_model.dart';
 import 'package:firebaseexample/screens/chat_page.dart';
@@ -11,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 final firebaseAuthInstance = FirebaseAuth.instance;
 final firebaseStorageInstance = FirebaseStorage.instance;
 final firebaseFireStore = FirebaseFirestore.instance;
+final fcm = FirebaseMessaging.instance;
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -26,8 +28,38 @@ class _HomeState extends State<Home> {
 
   @override
   void initState() {
+    _requestNotificationPermission();
     _getUserImage();
     super.initState();
+  }
+
+  void _requestNotificationPermission() async {
+    NotificationSettings notificationSettings = await fcm.requestPermission();
+
+    if (notificationSettings.authorizationStatus ==
+        AuthorizationStatus.denied) {
+      //bildirimlere izin verilmedi
+    } else {
+      String? token = await fcm.getToken();
+
+      if (token == null) {
+        //kullanıcıya bir uyarın gösterilir.
+      }
+      _updateTokenInDb(token!);
+
+      await fcm.subscribeToTopic("chat");
+
+      fcm.onTokenRefresh.listen((token) {
+        _updateTokenInDb(token);
+      }).onError((error) {});
+    }
+  }
+
+  void _updateTokenInDb(String token) async {
+    await firebaseFireStore
+        .collection("users")
+        .doc(firebaseAuthInstance.currentUser!.uid)
+        .update({'fcm': token});
   }
 
   void _getUserImage() async {
